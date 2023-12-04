@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "467690161651",
+    "project_id": "tvshowapp2",
+    "storage_bucket": "tvshowapp2.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:467690161651:android:4bf8684966c29f7981fe86",
+        "android_client_info": {
+          "package_name": "com.example.tvshowapp2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB44ONGhT7HrK9rSAQ-qer9XWWZ1SMO0Fw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

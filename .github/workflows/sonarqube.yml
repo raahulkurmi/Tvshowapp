@@ -1,0 +1,75 @@
+name: SonarQube Scan and Comment
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  sonarqube:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Disable shallow clone for better analysis
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+
+      - name: Cache SonarQube packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=myproject
+            -Dsonar.pullrequest.key=${{ github.event.number }}
+            -Dsonar.pullrequest.branch=${{ github.head_ref }}
+            -Dsonar.pullrequest.base=${{ github.base_ref }}
+            -Dsonar.pullrequest.github.repository=${{ github.repository }}
+            -Dsonar.scm.revision=${{ github.event.pull_request.head.sha }}
+
+      - name: SonarQube Quality Gate Check
+        id: quality_gate
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      - name: Fetch SonarQube Analysis Results
+        id: fetch_results
+        run: |
+          ANALYSIS_ID=$(curl -s -u ${{ secrets.SONAR_TOKEN }}: "${{ secrets.SONAR_HOST_URL }}/api/ce/task?id=$(cat /github/workspace/.scannerwork/report-task.txt | grep ceTaskId | cut -d'=' -f2)" | jq -r '.task.analysisId')
+          RESULTS=$(curl -s -u ${{ secrets.SONAR_TOKEN }}: "${{ secrets.SONAR_HOST_URL }}/api/measures/component?component=myproject&metricKeys=bugs,vulnerabilities,code_smells,coverage,duplicated_lines_density&analysisId=$ANALYSIS_ID")
+          BUGS=$(echo $RESULTS | jq -r '.component.measures[] | select(.metric=="bugs") | .value')
+          VULNERABILITIES=$(echo $RESULTS | jq -r '.component.measures[] | select(.metric=="vulnerabilities") | .value')
+          CODE_SMELLS=$(echo $RESULTS | jq -r '.component.measures[] | select(.metric=="code_smells") | .value')
+          COVERAGE=$(echo $RESULTS | jq -r '.component.measures[] | select(.metric=="coverage") | .value')
+          DUPLICATIONS=$(echo $RESULTS | jq -r '.component.measures[] | select(.metric=="duplicated_lines_density") | .value')
+          QUALITY_GATE_STATUS=${{ steps.quality_gate.outputs.quality-gate-status }}
+          echo "QUALITY_GATE_STATUS=$QUALITY_GATE_STATUS" >> $GITHUB_ENV
+          echo "SONAR_RESULTS=**SonarQube Scan Results**%0A- Quality Gate: $QUALITY_GATE_STATUS%0A- Bugs: $BUGS%0A- Vulnerabilities: $VULNERABILITIES%0A- Code Smells: $CODE_SMELLS%0A- Coverage: $COVERAGE%%0A- Duplications: $DUPLICATIONS%%0A[View in SonarQube](${{ secrets.SONAR_HOST_URL }}/dashboard?id=myproject&pullRequest=${{ github.event.number }})" >> $GITHUB_ENV
+
+      - name: Comment on Pull Request
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `${{ env.SONAR_RESULTS }}`
+            })
